@@ -23,7 +23,7 @@ class Config():
         """
         current_dict = self.data_cfg if len(d) == 0 else d
         for key, value in current_dict.items():
-            if key.lower() == parameter_str.lower():
+            if isinstance(key, str) and key.lower() == parameter_str.lower():
                 return value
             if type(value) == dict:
                 res = self.get_value(parameter_str, value)

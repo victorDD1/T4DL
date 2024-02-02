@@ -1,35 +1,30 @@
 DATA: # arguments that will be passed to get_dataloaders
   batch_size: 32
-  points_per_circle: 3
+  points_per_circle: 5
+  n_radius: 2
 
 MODEL:
-  model_name: MLP
+  model_name: ConditionalUnet1D
   PARAMS: # arguments that will be passed to the chosen models
-    input_dim: 6
-    output_dim: 1
-    n_hidden: 1
-    latent_dim: 32
+    input_dim: 2
+    global_cond_dim: 1
+    diffusion_step_embed_dim: 128
+    down_dims: {32, 64, 128}
+    kernel_size: 3
 
 TRAINING: # arguments that will be passed to the trainer
   criterion_str: MSELoss
-  optimizer_str: Adam
-  lr: 0.001
-  epochs: 30
-  logdir: "./logs/MLP/"
-  use_logger: True
-  lr_scheduler:
-    lr_scheduler_name: ExponentialLR
+  optimizer:
+    optimizer_name: AdamW
     PARAMS:
-      gamma: 0.995
+      lr: 0.001
+      weight_decay: 1.0e-6
+  epochs: 30
+  logdir: "./logs/ConditionalUnet1D/"
+  use_logger: True
 
-SWEEP: # arguments to sweep over and their values
-  latent_dim: [32, 64]
-  points_per_circle:
-    min: 3
-    max: 10
-    n: 3
-  lr:
-    min: 0.0001
-    max: 0.001
-    n: 2
-    logspace: True
+# SWEEP: # arguments to sweep over and their values
+#   points_per_circle:
+#     min: 3
+#     max: 10
+#     n: 3

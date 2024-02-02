@@ -3,7 +3,7 @@ import itertools
 import copy
 import os
 
-from utils.config import Config
+from .config import Config
 
 class SweepParametersConfig():
     def __init__(self,
@@ -55,8 +55,8 @@ class SweepParametersConfig():
         if self.current_combination_id >= len(self.param_combinations):
             return None
 
+        new_cfg = copy.deepcopy(self.cfg)
         if len(self.param_combinations) > 1:
-            new_cfg = copy.deepcopy(self.cfg)
             # Change logdir name
             print(f"\n--- Sweep parameters {self.current_combination_id + 1}/{len(self.param_combinations)}")
             old_logdir = self.cfg.get_value("logdir")
@@ -66,8 +66,17 @@ class SweepParametersConfig():
             for (param, value) in zip(self.params, values):
                 print("-", param, value)
                 new_cfg.change_value(param, value)
-        else:
-            new_cfg = copy.copy(self.cfg)
         
         self.current_combination_id += 1
         return new_cfg
+    
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.current_cfg = self.next_config()
+
+        if self.current_cfg == None:
+            raise StopIteration
+        
+        return self.current_cfg
