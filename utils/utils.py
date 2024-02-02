@@ -1,14 +1,18 @@
 import glob, os
 from torch.nn import Module
+from torch.utils.data import DataLoader
 from torch import load
 
-from utils.config import Config
+from .config import Config
+from .trainer import TrainerDDPM, TrainerSupervised, TrainerBase
 
-DEFAULT_MODEL_PATH = "./models"
-# Import all models from files in <DEFAULT_MODEL_PATH>
+# Import all models from files in ../models/*
+DEFAULT_MODEL_PATH = os.path.dirname(__file__).replace("utils", "models")
+module_path = DEFAULT_MODEL_PATH.replace(os.getcwd(), "").replace("/", ".")[1:]
 for p in glob.glob(os.path.join(DEFAULT_MODEL_PATH, "*.py")):
     filename = os.path.split(p)[1].replace(".py", "")
-    exec(f"from models.{filename} import *")
+    exec(f"from {module_path}.{filename} import *")
+
 
 class ModelLoader:
     """
@@ -31,17 +35,28 @@ class ModelLoader:
         
         return self.model
     
-def get_model(state_path:str):
+def get_model(cfg:Config=None, state_path:str="") -> Module:
     """
     Return model assuming it is save in logs with its config yaml file
     """
-    run_dir = os.path.split(state_path)[0]
-    config_path = glob.glob(run_dir + "/*.yaml")[0]
-    cfg = Config(config_path)
-    cfg_model = {**cfg.model()["PARAMS"]}
-    m = ModelLoader(cfg.get_value("model_name"), cfg_model)
-    model = m.get_model()
-    state = load(state_path)
-    model.load_state_dict(state["state_dict"])
-    print("Model state restored at epoch", state["epoch"])
+    model = None
+    if state_path != "":
+        # Get run config
+        run_dir = os.path.split(state_path)[0]
+        config_path = glob.glob(run_dir + "/*.yaml") + glob.glob(run_dir + "/*.yml")
+        cfg = Config(config_path[0])
+
+        # Load model
+        cfg_model = {**cfg.model()["PARAMS"]}
+        m = ModelLoader(cfg.get_value("model_name"), cfg_model)
+        model = m.get_model()
+        state = load(state_path)
+        model.load_state_dict(state["state_dict"])
+        print("Model state restored at epoch", state["epoch"])
+        return model
+    
+    elif cfg != None:
+        model_loader = ModelLoader(cfg.get_value("model_name"), cfg.model['PARAMS'])
+        model = model_loader.get_model()
+
     return model

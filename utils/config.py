@@ -2,15 +2,20 @@ import yaml
 import os
 from typing import List
 
+DATA_KEY = "data"
+MODEL_KEY = "model"
+TARINING_KEY = "training"
+SWEEP_KEY = "sweep"
+
 class Config():
     def __init__(self, config_path) -> None:
         self.config_path = config_path
         self.data_cfg = self._load_parameters_from_yaml()
 
-        self.model_keys = "model"
-        self.data_keys = "data"
-        self.training_keys = "training"
-        self.sweep_keys = "sweep"
+        self.data = self.get_value(DATA_KEY) if self.get_value(DATA_KEY) != None else {}
+        self.model = self.get_value(MODEL_KEY) if self.get_value(MODEL_KEY) != None else {}
+        self.training = self.get_value(TARINING_KEY) if self.get_value(TARINING_KEY) != None else {}
+        self.sweep = self.get_value(SWEEP_KEY) if self.get_value(SWEEP_KEY) != None else {}
 
     def _load_parameters_from_yaml(self):
         with open(self.config_path, 'r') as file:
@@ -23,7 +28,7 @@ class Config():
         """
         current_dict = self.data_cfg if len(d) == 0 else d
         for key, value in current_dict.items():
-            if key.lower() == parameter_str.lower():
+            if isinstance(key, str) and key.lower() == parameter_str.lower():
                 return value
             if type(value) == dict:
                 res = self.get_value(parameter_str, value)
@@ -76,15 +81,3 @@ class Config():
 
         with open(path, 'w') as file:
             yaml.dump(self.data_cfg, file)
-
-    def model(self):
-        return self.get_value(self.model_keys)
-    
-    def data(self):
-        return self.get_value(self.data_keys)
-    
-    def training(self):
-        return self.get_value(self.training_keys)
-    
-    def sweep(self):
-        return self.get_value(self.sweep_keys)

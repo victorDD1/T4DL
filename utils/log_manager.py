@@ -1,4 +1,5 @@
 import os
+import glob 
 
 class LogManager():
     def __init__(self, logdir:str) -> None:
@@ -6,11 +7,12 @@ class LogManager():
         self._create_if_not_exists(self.logdir)
 
         self.run_dir = ""
-        self.model_path = ""
         if (self._is_run_dir(self.logdir)):
             self.run_dir = self.logdir
         else:
             self._create_next_run_folder()
+
+        print("Run directory", self.run_dir)
 
     def _create_if_not_exists(self, path):
         if not(os.path.exists(path)):
@@ -19,18 +21,15 @@ class LogManager():
     def _is_run_dir(self, path):
         """
         Return True is <path> is a log run directory 
+        that contains config and a model
         """
-        id = None
-        try:
-            id_str = os.path.split(path)[-1]
-            id = int(id_str)
-        except:
-            pass
-
-        if type(id) == int:
-            return True
+        rundir = False
+        if (len(glob.glob(path + "/*.yml")) > 0 or \
+            len(glob.glob(path + "/*.yaml")) > 0) and \
+            len(glob.glob(path + "/*.pth")) > 0:
+            rundir = True
         
-        return False
+        return rundir
 
     def _get_max_log_id(self):
         """
