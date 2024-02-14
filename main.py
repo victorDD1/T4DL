@@ -16,14 +16,16 @@ def main(
     test: bool = False,
     mode: str = "supervised",
     cfg: str = "./config/supervised.yml",
+    dataset_dir: str = "",
     model_path: Optional[str] = ""
     ) -> None:
     """
     Args:
-        train: train model
-        test: only test
-        mode: training mode (supervised or DDPM)
-        cfg: configuration file path (.yml)
+        train: train model.
+        test: test model.
+        mode: training mode (supervised or DDPM).
+        cfg: configuration file path (.yml).
+        dataset_dir: dataset directory path.
         model_path: model path to load (.pth). Load corresponding config.
     """
     ### CONFIG
@@ -39,6 +41,8 @@ def main(
         cfg.change_value("logdir", rundir)
 
     ### DATA
+    if dataset_dir != "":
+        cfg.change_value("data_dir", dataset_dir)
     if mode.lower() == SUPERVISED_MODE:
         from data.dataset_supervised import get_dataloaders
     elif mode.lower() == DDPM_MODE:

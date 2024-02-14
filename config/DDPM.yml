@@ -1,31 +1,31 @@
 DATA: # arguments that will be passed to get_dataloaders
-  batch_size: 32
-  points_per_circle: 5
-  n_radius: 2
+  dataset: "single_goal_small_rand/60"
+  data_dir: "../dataset/"
+  batch_size: 64
+  return_index: False
+  augmentation: False
+  shuffle: True
+  noise_level: 0.0
 
 MODEL:
-  model_name: ConditionalUnet1D
+  model_name: AttentionConditionalUnet1D
   PARAMS: # arguments that will be passed to the chosen models
-    input_dim: 2
-    global_cond_dim: 1
+    timesteps: 1000
+    input_dim: 3
+    embedding_dim: 32
     diffusion_step_embed_dim: 128
     down_dims: {32, 64, 128}
     kernel_size: 3
+    exclude_first: 10
+    num_heads: 1
 
 TRAINING: # arguments that will be passed to the trainer
-  training_mode: DDPM
   criterion_str: MSELoss
   optimizer:
     optimizer_name: AdamW
     PARAMS:
       lr: 0.001
       weight_decay: 1.0e-6
-  epochs: 30
-  logdir: "./logs/ConditionalUnet1D/"
+  epochs: 50000
+  logdir: "./logs/Attention/test"
   use_logger: True
-
-# SWEEP: # arguments to sweep over and their values
-#   points_per_circle:
-#     min: 3
-#     max: 10
-#     n: 3

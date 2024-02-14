@@ -1,0 +1,31 @@
+DATA:
+  dataset: "forward_multimod2_rand"
+  data_dir: "../dataset/"
+  batch_size: 32
+  return_index: True
+  augmentation: False
+  shuffle: True
+  noise_level: 0.0
+
+MODEL:
+  model_name: "PointerNetHidden"
+  PARAMS:
+    input_dim: 3
+    output_length: 8
+    exclude_first: 10
+    hidden_dim: 32
+    lstm_layers: 2
+    dropout: 0.
+    bidir: False
+
+TRAINING:
+  criterion_str: CrossEntropyLoss
+  optimizer_str: Adam
+  lr: 0.001
+  epochs: 600
+  logdir: "./logs/forward_multimod2_randPtrNetH"
+  use_logger: True
+  lr_scheduler:
+    lr_scheduler_name: ExponentialLR
+    PARAMS:
+      gamma: 0.99
