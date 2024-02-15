@@ -1,7 +1,7 @@
 DATA: # arguments that will be passed to get_dataloaders
-  dataset: "single_goal_small_rand/60"
-  data_dir: "../dataset/"
-  batch_size: 64
+  dataset: "single_goal_small_rand/6000"
+  data_dir: "/workspace/Datasets/ESFAL"
+  batch_size: 128
   return_index: False
   augmentation: False
   shuffle: True
@@ -26,6 +26,6 @@ TRAINING: # arguments that will be passed to the trainer
     PARAMS:
       lr: 0.001
       weight_decay: 1.0e-6
-  epochs: 50000
-  logdir: "./logs/Attention/test"
+  epochs: 10000
+  logdir: "./logs/Attention/"
   use_logger: True

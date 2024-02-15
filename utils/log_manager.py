@@ -9,6 +9,8 @@ class LogManager():
         self.run_dir = ""
         if (self._is_run_dir(self.logdir)):
             self.run_dir = self.logdir
+        elif (self._is_empty(self.logdir)):
+            self.run_dir = self.logdir
         else:
             self._create_next_run_folder()
 
@@ -30,6 +32,14 @@ class LogManager():
             rundir = True
         
         return rundir
+    
+    def _is_empty(self, path):
+        """
+        Return True is <path> is an empty log run directory 
+        """
+        if (len(glob.glob(path + "/*")) == 0):
+            return True
+        return False
 
     def _get_max_log_id(self):
         """

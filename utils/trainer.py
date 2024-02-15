@@ -47,11 +47,11 @@ class TrainerBase():
         """
 
         self.cfg = cfg
-        self.model = model
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = model.to(self.device)
         self.dataloader_train = dataloader_train
         self.dataloader_test = dataloader_test
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.current_epoch = 0
         self.logs_loss_dict = {}
         self.metrics_dict = {}
