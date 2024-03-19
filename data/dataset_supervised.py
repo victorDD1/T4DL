@@ -29,7 +29,11 @@ class MyDataset(Dataset):
         return self.N
     
     def __getitem__(self, index):
-        return self.points[index, :], self.radius[index, :]
+        item = {
+            "input" : self.points[index],
+            "target" : self.radius[index]
+        }
+        return item
     
 def get_dataloaders(batch_size:int, points_per_circle:int=3):
     """
@@ -41,7 +45,9 @@ def get_dataloaders(batch_size:int, points_per_circle:int=3):
     train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size) # None if no test dataset
     
-    batch_input, batch_target = next(iter(train_dataloader))
-    print(f"Input batch shape {list(batch_input.shape)}. Target batch shape {list(batch_target.shape)}")
-
+    batch = next(iter(train_dataloader))
+    print("Train batch shape:")
+    for key, value in batch.items():
+        print(key, ":", list(value.shape))
+    
     return train_dataloader, test_dataloader

@@ -1,6 +1,6 @@
 from torch.utils.tensorboard import SummaryWriter
 
-class Logger():
+class LoggerAbstract():
     def __init__(self,
                  log_folder:str
                  ) -> None:
@@ -15,7 +15,7 @@ class Logger():
     def close(self):
         pass
 
-class TensorBoardLogger(Logger):
+class TensorBoardLogger(LoggerAbstract):
     def __init__(self,
                  log_folder:str,
                  comment:str=""

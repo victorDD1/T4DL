@@ -1,30 +1,31 @@
 import tyro
 import glob
 import os
-
+import shutil
 from typing import Optional
+
+from data.utils import DataloaderFactory
 from utils.config import Config
 from utils.sweep import SweepParametersConfig
-from utils.trainer import TrainerDDPM, TrainerSupervised
-from utils.utils import get_model
+from utils.trainer import TrainerFactory
+from utils.utils import get_model, DEFAULT_MODEL_PATH, DEFAULT_MODELS_DIR
 
 SUPERVISED_MODE = "supervised"
 DDPM_MODE = "ddpm"
+DEFAULT_CONFIG_PATH = "./config/supervised.yml"
 
 def main(
-    train: bool = False,
+    train: str = SUPERVISED_MODE,
     test: bool = False,
-    mode: str = "supervised",
-    cfg: str = "./config/supervised.yml",
+    cfg: str = DEFAULT_CONFIG_PATH,
     model_path: Optional[str] = ""
     ) -> None:
     """
     Args:
-        train: train model
-        test: only test
-        mode: training mode (supervised or DDPM)
-        cfg: configuration file path (.yml)
-        model_path: model path to load (.pth). Load corresponding config.
+        - train: train model. Specify which training mode to use: supervised (default), ddpm
+        - test: test model.
+        - cfg: configuration file path (.yml).
+        - model_path: model path to load (.pth). Load corresponding config.
     """
     ### CONFIG
     if cfg != "":
@@ -36,15 +37,11 @@ def main(
         cfg_run = glob.glob(rundir + "/*.yaml") + glob.glob(rundir + "/*.yml")
         if len(cfg_run) > 0:
             cfg = Config(cfg_run[0])
+        print("Using config file from", rundir)
         cfg.change_value("logdir", rundir)
 
     ### DATA
-    if mode.lower() == SUPERVISED_MODE:
-        from data.dataset_supervised import get_dataloaders
-    elif mode.lower() == DDPM_MODE:
-        from data.dataset_DDPM import get_dataloaders # A bit dirty
-
-    dataloader_train, dataloader_test = get_dataloaders(**cfg.data)
+    dataloader_train, dataloader_test = DataloaderFactory.get_dataloaders(train, params=cfg.data)
     
     ### MODEL
     model = get_model(cfg, state_path=model_path)
@@ -56,17 +53,20 @@ def main(
 
         for cfg in sweeper:
 
-            trainer = None
-            if mode.lower() == SUPERVISED_MODE:
-                trainer = TrainerSupervised(cfg, model, dataloader_train, dataloader_test)
-            elif mode.lower() == DDPM_MODE:
-                trainer = TrainerDDPM(cfg, model, dataloader_train)
+            trainer = TrainerFactory.create_trainer(train)
+            trainer = trainer(cfg, model, dataloader_train, dataloader_test)
+            
+            # Copy models files to run directory
+            rel_models_path = os.path.join(trainer.run_dir, DEFAULT_MODELS_DIR)
+            if not os.path.exists(rel_models_path):
+                shutil.copytree(DEFAULT_MODEL_PATH, rel_models_path)
 
+            # Train
             trainer.train()
 
-    if test:
+    if test and model_path:
 
-        model = model.eval()
+        model.eval()
         # Do what you want
 
 if __name__ == "__main__":

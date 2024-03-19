@@ -1,5 +1,22 @@
 logs/*
 
+# Ignore changes to allow user modifications
+!config
+/config/*
+!config/supervised.yml
+!config/DDPM.yml
+
+!data
+/data/*
+!dataset_DDPM.py
+!dataset_supervised.py
+
+!models/
+/models/*
+!models.DDPM.py
+!models.MLP.py
+!model.ConditionalUnet1D.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

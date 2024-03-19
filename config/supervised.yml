@@ -11,11 +11,11 @@ MODEL:
     latent_dim: 32
 
 TRAINING: # arguments that will be passed to the trainer
-  training_mode: supervised
   criterion_str: MSELoss
   optimizer:
     optimizer_name: Adam
-  lr: 0.001
+    PARAMS:
+      lr: 0.001
   epochs: 30
   logdir: "./logs/MLP/"
   use_logger: True

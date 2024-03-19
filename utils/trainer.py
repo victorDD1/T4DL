@@ -6,29 +6,31 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from torch.utils.data import DataLoader
 from torch.nn import Module
+import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
+import torch.optim as optim
 from diffusers.training_utils import EMAModel
 from diffusers.optimization import get_scheduler
 
 from .config import Config
-from .logger import Logger, TensorBoardLogger
+from .logger import LoggerAbstract, TensorBoardLogger
 from .log_manager import LogManager
-
-DEFAULT_BACTH_SIZE = 32
-DEFAULT_OPTIMIZER = {"optimizer_name" : "Adam"}
-DEFAULT_CRITERION = "MSELoss"
-DEFAULT_LR = 1e-4
-DEFAULT_EPOCHS = 100
-DEFAULT_LOGDIR = "./logs"
-DEFAULT_SCHEDULER = {}
-DEFAULT_DATASET = ""
-DEFAULT_TRAIN_TEST_RATIO = 5
-DEFAULT_USE_LOGGER = True
-DEFAULT_MODEL_STATE = ""
 
 class TrainerBase():
     """
     Trainer base class for training PyTorch models.
     """
+
+    DEFAULT_BACTH_SIZE = 32
+    DEFAULT_OPTIMIZER = {"optimizer_name" : "Adam"}
+    DEFAULT_CRITERION = "MSELoss"
+    DEFAULT_EPOCHS = 100
+    DEFAULT_LOGDIR = "./logs"
+    DEFAULT_SCHEDULER = {}
+    DEFAULT_TRAIN_TEST_RATIO = 5
+    DEFAULT_USE_LOGGER = True
+    DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
     def __init__(self,
                  cfg:Config,
                  model:Module,
@@ -45,39 +47,32 @@ class TrainerBase():
             - dataloader_test (Optional[DataLoader]): Testing data loader (default: None).
             - **kwargs: Additional optional parameters.
         """
-
         self.cfg = cfg
-        self.model = model
         self.dataloader_train = dataloader_train
         self.dataloader_test = dataloader_test
+        self.model = model
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.current_epoch = 0
         self.logs_loss_dict = {}
         self.metrics_dict = {}
         self.train_loss_history = []
         self.test_loss_history = []
         self.min_test_loss = math.inf
-        self.nargs_model = len(inspect.signature(self.model.forward).parameters)
         
         # Optional arguments
         self.optional_args = {
-            **kwargs, 
-            **{
-            "dataset" : DEFAULT_DATASET,
-            "batch_size" : DEFAULT_BACTH_SIZE,
-            "epochs" : DEFAULT_EPOCHS,
-            "optimizer" : DEFAULT_OPTIMIZER,
-            "lr" : DEFAULT_LR,
-            "criterion_str" : DEFAULT_CRITERION,
-            "lr_scheduler" : DEFAULT_SCHEDULER,
-            "logdir" : DEFAULT_LOGDIR,
-            "train_test_ratio" : DEFAULT_TRAIN_TEST_RATIO,
-            "use_logger" : DEFAULT_USE_LOGGER,
-            "model_state" : DEFAULT_MODEL_STATE,
-            }
+            "batch_size" : TrainerBase.DEFAULT_BACTH_SIZE,
+            "epochs" : TrainerBase.DEFAULT_EPOCHS,
+            "optimizer" : TrainerBase.DEFAULT_OPTIMIZER,
+            "criterion_str" : TrainerBase.DEFAULT_CRITERION,
+            "lr_scheduler" : TrainerBase.DEFAULT_SCHEDULER,
+            "logdir" : TrainerBase.DEFAULT_LOGDIR,
+            "train_test_ratio" : TrainerBase.DEFAULT_TRAIN_TEST_RATIO,
+            "use_logger" : TrainerBase.DEFAULT_USE_LOGGER,
+            "device" : TrainerBase.DEFAULT_DEVICE,
         }
-        
+        self.optional_args.update(kwargs)
+
         self._set_config_params()
         self._set_optimizer()
         self._set_lr_scheduler()
@@ -88,17 +83,16 @@ class TrainerBase():
         self.run_dir = self.log_manager.run_dir
         self.model_name = self.model.name if hasattr(self.model, "name") else "model"
         self.model_path = os.path.join(self.run_dir, f"{self.model_name}.pth")
+        
+        # Load model
+        self.model = model.to(self.device)
         if os.path.exists(self.model_path):
             self.load_state(self.model_path)
-
-        # Load model
-        if self.model_state != "":
-            self.load_state(self.model_state)
         else:
             self.copy_config(cfg.config_path)
                 
         # Logger
-        self.logger = Logger(self.run_dir)
+        self.logger = LoggerAbstract(self.run_dir)
         if self.use_logger and not(self.log_manager._is_run_dir(self.run_dir)):
             self.logger = TensorBoardLogger(self.run_dir, kwargs.get("comment", ""))
 
@@ -117,38 +111,41 @@ class TrainerBase():
         """
         Set the optimizer for training.
         """
-        if type(self.optimizer) == dict and len(self.optimizer) > 0:
-            try:
-                optimizer_str = self.optimizer["optimizer_name"]
-                optimizer_params = self.optimizer.pop("PARAMS", {})
-                exec(f"setattr(self, 'optimizer', torch.optim.{optimizer_str}(self.model.parameters(), **optimizer_params))")
-            except AttributeError as e:
-                print(e)
-                print(f"Optimizer '{self.optimizer_str}' not found.")
-
+        self.optim = None
+        if isinstance(self.optimizer, dict) and len(self.optimizer) > 0:
+            optimizer_name = self.optimizer.get("optimizer_name")
+            optimizer_params = self.optimizer.get("PARAMS", {})
+            if optimizer_name:
+                optimizer_cls = getattr(optim, optimizer_name, None)
+                if optimizer_cls is not None:
+                    self.optim = optimizer_cls(self.model.parameters(), **optimizer_params)
+                else:
+                    print(f"Optimizer '{optimizer_name}' not found.")
 
     def _set_lr_scheduler(self):
         """
         Set the learning rate scheduler.
         """
         self.scheduler = None
-        if type(self.lr_scheduler) == dict and len(self.lr_scheduler) > 0:
-            try:
-                lr_scheduler_str = self.lr_scheduler["lr_scheduler_name"]
-                lr_scheduler_params = self.lr_scheduler.pop("PARAMS", {})
-                exec(f"setattr(self, 'scheduler', torch.optim.lr_scheduler.{lr_scheduler_str}(self.optimizer, **lr_scheduler_params))")
-            except ValueError as e:
-                print(e)
-                print(f"Lr scheduler '{self.lr_scheduler}' not found.")
-    
+        if isinstance(self.lr_scheduler, dict) and len(self.lr_scheduler) > 0:
+            lr_scheduler_name = self.lr_scheduler.get("lr_scheduler_name")
+            lr_scheduler_params = self.lr_scheduler.get("PARAMS", {})
+
+            if lr_scheduler_name:
+                scheduler_cls = getattr(lr_scheduler, lr_scheduler_name, None)
+                if scheduler_cls is not None:
+                    self.scheduler = scheduler_cls(self.optim, **lr_scheduler_params)
+                else:
+                    print(f"Lr scheduler '{lr_scheduler_name}' not found.")
+
     def _set_criterion(self):
         """
         Set the loss criterion.
         """
-        try:
-            exec(f"setattr(self, 'criterion', torch.nn.{self.criterion_str}())")
-        except ValueError as e:
-            print(e)
+        criterion_cls = getattr(nn, self.criterion_str, None)
+        if criterion_cls is not None:
+            self.criterion = criterion_cls()
+        else:
             print(f"Loss '{self.criterion_str}' not found.")
 
     def _save_model(self) -> None:
@@ -158,7 +155,7 @@ class TrainerBase():
         state = {
             'epoch': self.current_epoch,
             'state_dict': self.model.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
+            'optimizer': self.optim.state_dict(),
             'train_loss_history': self.train_loss_history,
             'test_loss_history': self.test_loss_history
         }
@@ -183,7 +180,7 @@ class TrainerBase():
             state = torch.load(state_path)
             self.current_epoch = state["epoch"]
             self.model.load_state_dict(state["state_dict"])
-            self.optimizer.load_state_dict(state["optimizer"])
+            self.optim.load_state_dict(state["optimizer"])
             self.train_loss_history = state["train_loss_history"]
             self.test_loss_history = state["test_loss_history"]
 
@@ -280,17 +277,20 @@ class TrainerSupervised(TrainerBase):
             - float: Average training loss for the epoch.
         """
         total_loss = 0.
-
-        for (input, target) in tqdm(self.dataloader_train, desc = "Batch", leave=False):
+        self.model.train()
+        for batch in tqdm(self.dataloader_test, desc = "Batch", leave=False):
+            input = batch.pop("input")
+            target = batch.pop("target", None)
             # Move batch to device
             input = input.to(self.device)
             target = target.to(self.device)
 
-            self.optimizer.zero_grad()
+
+            self.optim.zero_grad()
             out = self.model(input)
             loss = self.criterion(out, target)
             loss.backward()
-            self.optimizer.step()
+            self.optim.step()
 
             total_loss += loss.item()
              
@@ -310,7 +310,9 @@ class TrainerSupervised(TrainerBase):
         total_loss = 0.
 
         self.model.eval()
-        for (input, target) in tqdm(self.dataloader_test, desc = "Batch", leave=False):
+        for batch in tqdm(self.dataloader_test, desc = "Batch", leave=False):
+            input = batch.pop("input")
+            target = batch.pop("target")
             # Move batch to device
             input = input.to(self.device)
             target = target.to(self.device)
@@ -373,8 +375,8 @@ class TrainerSupervised(TrainerBase):
 ####################    DDPM    ####################
 ####################################################
         
-DEFAULT_EMA_POWER = 0.75
-DEFAULT_CKPT_EVERY = 5
+DEFAULT_EMA_POWER = 0.
+DEFAULT_CKPT_EVERY = 1
 
 class TrainerDDPM(TrainerBase):
     """
@@ -384,6 +386,7 @@ class TrainerDDPM(TrainerBase):
                  cfg:Config,
                  model:Module,
                  dataloader_train:DataLoader,
+                 dataloader_test:DataLoader,
                  **kwargs) -> None:
         """
         Trainer class for training PyTorch models.
@@ -396,30 +399,34 @@ class TrainerDDPM(TrainerBase):
             - **kwargs: Additional optional parameters.
         """
         # Optional arguments
-        kwargs = {
-            **kwargs,
-            **{
-                "ema_power" : DEFAULT_EMA_POWER,
-                "ckpt_every" : DEFAULT_CKPT_EVERY,
-            }
+        optional_args = {
+            "ema_power" : DEFAULT_EMA_POWER,
+            "ckpt_every" : DEFAULT_CKPT_EVERY,
         }
-        
+        kwargs = {
+            **optional_args,
+            **kwargs,
+        }
+
         super().__init__(cfg,
                          model,
                          dataloader_train,
+                         dataloader_test,
                          **kwargs)
         
         self.ema = EMAModel(
             parameters=self.model.parameters(),
-            power=self.ema_power)
+            power=self.ema_power) if self.ema_power > 0. else None
 
-        # Cosine LR schedule with linear warmup, override config scheduler
-        self.lr_scheduler = get_scheduler(
-            name='cosine',
-            optimizer=self.optimizer,
-            num_warmup_steps=500,
-            num_training_steps= len(self.dataloader_train) * cfg.get_value("epochs")
-        )
+        # Custom hugging face scheduler
+        lr_scheduler_str = self.lr_scheduler.pop("lr_scheduler_name", None)
+        if lr_scheduler_str and not self.scheduler:
+            self.scheduler = get_scheduler(
+                name=lr_scheduler_str,
+                optimizer=self.optim,
+                num_warmup_steps=min(self.cfg.get_value("epochs") / 20, 500),
+                num_training_steps= len(self.dataloader_train) * self.cfg.get_value("epochs")
+            )
 
     def _train_epoch(self):
         """
@@ -430,6 +437,7 @@ class TrainerDDPM(TrainerBase):
         """
         total_loss = 0.
 
+        self.model.train()
         for batch in tqdm(self.dataloader_train, desc = "Batch", leave=False):
             data_samples = batch.pop("data")
             condition = batch.pop("condition", None)
@@ -438,24 +446,58 @@ class TrainerDDPM(TrainerBase):
             condition = condition.to(self.device) if condition != None else None
 
             # Predict the noise residual w/o conditioning
-            noise_pred, noise = self.model(data_samples, None, condition)
-
-            loss = self.criterion(noise_pred, noise)
+            denoised_sample, noise = self.model(data_samples, None, condition)
+            
+            index = batch.pop("index", None)
+            if index != None:
+                loss = self.criterion(denoised_sample, index)
+            else:
+                loss = self.criterion(denoised_sample, noise)
             total_loss += loss.item()
 
             loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-            self.lr_scheduler.step()
+            self.optim.step()
+            self.optim.zero_grad()
             
             # Update Exponential Moving Average of the model weights
-            self.ema.step(self.model.parameters())
-             
+            if self.ema:
+                self.ema.step(self.model.parameters())
+
+        if self.scheduler:
+            self.scheduler.step()
+
         # Calculate average loss for the epoch
         average_loss = total_loss / len(self.dataloader_train)        
         
         return average_loss
 
+    @torch.no_grad()
+    def _test_epoch(self):
+        """
+        Evaluate the model on the testing dataset for one epoch.
+
+        Returns:
+            - float: Average testing loss for the epoch.
+        """
+        total_loss = 0.
+
+        self.model.eval()
+        for batch in tqdm(self.dataloader_test, desc = "Batch", leave=False):
+            data_samples = batch.pop("data")
+            condition = batch.pop("condition", None)
+
+            data_samples = data_samples.to(self.device)
+            condition = condition.to(self.device) if condition != None else None
+
+            data_generated = self.model.sample(condition=condition)
+            loss = torch.nn.functional.mse_loss(data_generated, data_samples)
+            total_loss += loss.item()
+
+        # Calculate average loss for the epoch
+        average_loss = total_loss / len(self.dataloader_test)
+
+        return average_loss
+    
     def train(self):
         """
         Train the model for multiple epochs.
@@ -471,6 +513,18 @@ class TrainerDDPM(TrainerBase):
             self.train_loss_history.append(train_loss)
             self.logs_loss_dict["tr_loss"] = train_loss
 
+            # Test
+            test_loss = None
+            if (self.dataloader_test != None and epoch % self.train_test_ratio == 0):
+                test_loss = self._test_epoch()
+                # Save model with best test loss
+                if (epoch != 0 and test_loss < self.min_test_loss):
+                    self._save_model()
+                    self.min_test_loss = test_loss
+    
+             # Write logs and history
+                self.logs_loss_dict["tst_loss"] = test_loss
+
             self.logger.write_scalars("Loss", self.logs_loss_dict, self.current_epoch)
             progress_bar.set_postfix(self.logs_loss_dict)
 
@@ -483,3 +537,16 @@ class TrainerDDPM(TrainerBase):
         self.write_hparams(self.cfg.get_cfg_as_dict())
         self.write_results()
         self.save_training_curves()
+
+class TrainerFactory():
+    TRAINER = {
+        "supervised": TrainerSupervised,
+        "ddpm": TrainerDDPM,
+    }
+
+    @staticmethod
+    def create_trainer(training_mode:str):
+        trainer_class = TrainerFactory.TRAINER.get(training_mode.lower())
+        if not trainer_class:
+            raise ValueError("Invalid training mode. Should be supervised or ddpm.")
+        return trainer_class
